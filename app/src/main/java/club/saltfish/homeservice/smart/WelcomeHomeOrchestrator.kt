@@ -120,8 +120,9 @@ class WelcomeHomeOrchestrator(
         val week = arrayOf("日", "一", "二", "三", "四", "五", "六")[cal.get(Calendar.DAY_OF_WEEK) - 1]
         append("今天是").append(SimpleDateFormat("M月d日", Locale.CHINA).format(Date(triggerTimeMs)))
             .append("星期").append(week).append("。\n")
-        append("现在是").append(SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(triggerTimeMs)))
-            .append("，主人刚到家开门。\n")
+        append("现在是").append(periodOf(cal.get(Calendar.HOUR_OF_DAY)))
+            .append("（").append(SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(triggerTimeMs)))
+            .append("），主人刚到家开门。\n")
 
         append("天色：").append(when (env.sunState) {
             "below_horizon" -> "太阳已落山，天黑了"
@@ -159,6 +160,17 @@ class WelcomeHomeOrchestrator(
 
         summary?.takeIf { it.isNotBlank() }?.let { append("触发信息：").append(it).append("。\n") }
         append("请用一句话（30字内）温馨、口语化地欢迎主人回家。")
+    }
+
+    /** 按小时返回时段描述（早晨/上午/中午/下午/傍晚/晚上/深夜） */
+    private fun periodOf(hour: Int): String = when (hour) {
+        in 5..9 -> "早晨"
+        in 10..11 -> "上午"
+        in 12..13 -> "中午"
+        in 14..16 -> "下午"
+        in 17..18 -> "傍晚"
+        in 19..22 -> "晚上"
+        else -> "深夜"
     }
 
     private data class Environment(
