@@ -1,0 +1,31 @@
+{
+  "bridge": {
+    "baseUrl": "http://192.168.5.50:9092",
+    "token": "",
+    "timeoutMs": 10000,
+    "retry": 3
+  },
+  "server": {
+    "port": 8888,
+    "token": "",
+    "allowLanOnly": true
+  },
+  "ha": {
+    "baseUrl": "http://192.168.5.50:8123",
+    "token": "",
+    "timeoutMs": 10000,
+    "retry": 3
+  },
+  "rules": [
+    {
+      "id": "sample-doorbell",
+      "packageNames": ["com.visualworld.ecology"],
+      "titleRegex": ".*门铃.*",
+      "textRegex": ".*",
+      "dedupWindowMs": 60000,
+      "actions": [
+        { "type": "bridgePlayText", "text": "有人按门铃" }
+      ]
+    }
+  ]
+}
