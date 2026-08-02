@@ -5,6 +5,8 @@ import club.saltfish.homeservice.ha.HomeAssistantClient
 import club.saltfish.homeservice.rule.ActionDef
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
@@ -54,7 +56,6 @@ private class FakeHomeAssistantClient : HomeAssistantClient {
     val turnedOff = mutableListOf<String>()
     val toggled = mutableListOf<String>()
     val calledServices = mutableListOf<CallServiceRecord>()
-    val queriedStates = mutableListOf<String>()
     var failTurnOn = false
 
     override suspend fun turnOn(entityId: String): Result<Unit> {
@@ -82,100 +83,108 @@ private class FakeHomeAssistantClient : HomeAssistantClient {
         return Result.success(Unit)
     }
 
-    override suspend fun getState(entityId: String): Result<String> {
-        queriedStates.add(entityId)
-        return Result.success("on")
-    }
-
+    override suspend fun getState(entityId: String): Result<String> = Result.success("off")
     override suspend fun health(): Boolean = true
 }
+
+/** welcomeHome 回调记录器 */
+private class WelcomeRecorder {
+    var calls = 0
+    var lastCtx: ActionContext? = null
+    val handler: suspend (ActionContext?) -> Result<Unit> = { ctx ->
+        calls++; lastCtx = ctx; Result.success(Unit)
+    }
+}
+
+/** 把 dispatcher 与其 fake 依赖打包，供用例访问 */
+private data class Fixture(
+    val dispatcher: ActionDispatcher,
+    val bridge: FakeBridgeClient,
+    val ha: FakeHomeAssistantClient,
+    val welcome: WelcomeRecorder
+)
+
+private fun fixture(
+    bridge: FakeBridgeClient = FakeBridgeClient(),
+    ha: FakeHomeAssistantClient = FakeHomeAssistantClient(),
+    welcome: WelcomeRecorder = WelcomeRecorder()
+) = Fixture(ActionDispatcher(bridge, ha, welcome.handler), bridge, ha, welcome)
 
 class ActionDispatcherTest {
 
     @Test
     fun dispatchesPlayText() = runBlocking {
-        val bridge = FakeBridgeClient()
-        val dispatcher = ActionDispatcher(bridge, FakeHomeAssistantClient())
-        dispatcher.dispatch(listOf(ActionDef("bridgePlayText", text = "你好")))
-        assertEquals(listOf("你好"), bridge.playedTexts)
+        val f = fixture()
+        f.dispatcher.dispatch(listOf(ActionDef("bridgePlayText", text = "你好")))
+        assertEquals(listOf("你好"), f.bridge.playedTexts)
     }
 
     @Test
     fun dispatchesPlayUrl() = runBlocking {
-        val bridge = FakeBridgeClient()
-        val dispatcher = ActionDispatcher(bridge, FakeHomeAssistantClient())
-        dispatcher.dispatch(listOf(ActionDef("bridgePlayUrl", url = "http://a/b.mp3")))
-        assertEquals(listOf("http://a/b.mp3"), bridge.playedUrls)
+        val f = fixture()
+        f.dispatcher.dispatch(listOf(ActionDef("bridgePlayUrl", url = "http://a/b.mp3")))
+        assertEquals(listOf("http://a/b.mp3"), f.bridge.playedUrls)
     }
 
     @Test
     fun dispatchesWakeupAndInterrupt() = runBlocking {
-        val bridge = FakeBridgeClient()
-        val dispatcher = ActionDispatcher(bridge, FakeHomeAssistantClient())
-        dispatcher.dispatch(listOf(ActionDef("bridgeWakeup"), ActionDef("bridgeInterrupt")))
-        assertEquals(1, bridge.wakeupCount)
-        assertEquals(1, bridge.interruptCount)
+        val f = fixture()
+        f.dispatcher.dispatch(listOf(ActionDef("bridgeWakeup"), ActionDef("bridgeInterrupt")))
+        assertEquals(1, f.bridge.wakeupCount)
+        assertEquals(1, f.bridge.interruptCount)
     }
 
     @Test
     fun skipsActionWithMissingText() = runBlocking {
-        val bridge = FakeBridgeClient()
-        val dispatcher = ActionDispatcher(bridge, FakeHomeAssistantClient())
-        dispatcher.dispatch(listOf(ActionDef("bridgePlayText", text = null)))
-        assertTrue(bridge.playedTexts.isEmpty())
+        val f = fixture()
+        f.dispatcher.dispatch(listOf(ActionDef("bridgePlayText", text = null)))
+        assertTrue(f.bridge.playedTexts.isEmpty())
     }
 
     @Test
     fun unknownTypeIsSkipped() = runBlocking {
-        val bridge = FakeBridgeClient()
-        val ha = FakeHomeAssistantClient()
-        val dispatcher = ActionDispatcher(bridge, ha)
-        dispatcher.dispatch(listOf(ActionDef("doesNotExist")))
-        assertTrue(bridge.playedTexts.isEmpty())
-        assertTrue(ha.turnedOn.isEmpty())
+        val f = fixture()
+        f.dispatcher.dispatch(listOf(ActionDef("doesNotExist")))
+        assertTrue(f.bridge.playedTexts.isEmpty())
+        assertTrue(f.ha.turnedOn.isEmpty())
     }
 
     @Test
     fun failureOfOneActionDoesNotStopOthers() = runBlocking {
-        val bridge = FakeBridgeClient().apply { failPlayText = true }
-        val dispatcher = ActionDispatcher(bridge, FakeHomeAssistantClient())
-        dispatcher.dispatch(
+        val f = fixture(bridge = FakeBridgeClient().apply { failPlayText = true })
+        f.dispatcher.dispatch(
             listOf(
                 ActionDef("bridgePlayText", text = "失败的那个"),
                 ActionDef("bridgeInterrupt")
             )
         )
-        // 第一个失败，但第二个仍执行
-        assertEquals(1, bridge.interruptCount)
+        assertEquals(1, f.bridge.interruptCount)
     }
 
     @Test
     fun dispatchesHaTurnOn() = runBlocking {
-        val ha = FakeHomeAssistantClient()
-        val dispatcher = ActionDispatcher(FakeBridgeClient(), ha)
-        dispatcher.dispatch(listOf(ActionDef("haTurnOn", entityId = "light.keting")))
-        assertEquals(listOf("light.keting"), ha.turnedOn)
+        val f = fixture()
+        f.dispatcher.dispatch(listOf(ActionDef("haTurnOn", entityId = "light.keting")))
+        assertEquals(listOf("light.keting"), f.ha.turnedOn)
     }
 
     @Test
     fun dispatchesHaTurnOffAndToggle() = runBlocking {
-        val ha = FakeHomeAssistantClient()
-        val dispatcher = ActionDispatcher(FakeBridgeClient(), ha)
-        dispatcher.dispatch(
+        val f = fixture()
+        f.dispatcher.dispatch(
             listOf(
                 ActionDef("haTurnOff", entityId = "switch.fan"),
                 ActionDef("haToggle", entityId = "light.desk")
             )
         )
-        assertEquals(listOf("switch.fan"), ha.turnedOff)
-        assertEquals(listOf("light.desk"), ha.toggled)
+        assertEquals(listOf("switch.fan"), f.ha.turnedOff)
+        assertEquals(listOf("light.desk"), f.ha.toggled)
     }
 
     @Test
     fun dispatchesHaCallServiceMergesEntityIdAndData() = runBlocking {
-        val ha = FakeHomeAssistantClient()
-        val dispatcher = ActionDispatcher(FakeBridgeClient(), ha)
-        dispatcher.dispatch(
+        val f = fixture()
+        f.dispatcher.dispatch(
             listOf(
                 ActionDef(
                     type = "haCallService",
@@ -186,8 +195,8 @@ class ActionDispatcherTest {
                 )
             )
         )
-        assertEquals(1, ha.calledServices.size)
-        val rec = ha.calledServices.single()
+        assertEquals(1, f.ha.calledServices.size)
+        val rec = f.ha.calledServices.single()
         assertEquals("xiaomi_miot", rec.domain)
         assertEquals("set_property", rec.service)
         assertEquals(
@@ -198,34 +207,46 @@ class ActionDispatcherTest {
 
     @Test
     fun skipsHaActionWithMissingEntityId() = runBlocking {
-        val ha = FakeHomeAssistantClient()
-        val dispatcher = ActionDispatcher(FakeBridgeClient(), ha)
-        dispatcher.dispatch(listOf(ActionDef("haTurnOn")))
-        assertTrue(ha.turnedOn.isEmpty())
+        val f = fixture()
+        f.dispatcher.dispatch(listOf(ActionDef("haTurnOn")))
+        assertTrue(f.ha.turnedOn.isEmpty())
     }
 
     @Test
     fun skipsHaCallServiceWithMissingDomain() = runBlocking {
-        val ha = FakeHomeAssistantClient()
-        val dispatcher = ActionDispatcher(FakeBridgeClient(), ha)
-        dispatcher.dispatch(
+        val f = fixture()
+        f.dispatcher.dispatch(
             listOf(ActionDef("haCallService", service = "turn_on", entityId = "light.x"))
         )
-        assertTrue(ha.calledServices.isEmpty())
+        assertTrue(f.ha.calledServices.isEmpty())
     }
 
     @Test
     fun failureOfHaActionDoesNotStopBridgeAction() = runBlocking {
-        val ha = FakeHomeAssistantClient().apply { failTurnOn = true }
-        val bridge = FakeBridgeClient()
-        val dispatcher = ActionDispatcher(bridge, ha)
-        dispatcher.dispatch(
+        val f = fixture(bridge = FakeBridgeClient(), ha = FakeHomeAssistantClient().apply { failTurnOn = true })
+        f.dispatcher.dispatch(
             listOf(
                 ActionDef("haTurnOn", entityId = "light.x"),
                 ActionDef("bridgeInterrupt")
             )
         )
-        // HA 动作失败，bridge 动作仍执行
-        assertEquals(1, bridge.interruptCount)
+        assertEquals(1, f.bridge.interruptCount)
+    }
+
+    @Test
+    fun welcomeHomeForwardsContext() = runBlocking {
+        val f = fixture()
+        val ctx = ActionContext(triggerTimeMs = 12345L, notificationSummary = "门铃 有人按门铃")
+        f.dispatcher.dispatch(listOf(ActionDef("welcomeHome")), ctx)
+        assertEquals(1, f.welcome.calls)
+        assertSame(ctx, f.welcome.lastCtx)
+    }
+
+    @Test
+    fun welcomeHomeWithNullContext() = runBlocking {
+        val f = fixture()
+        f.dispatcher.dispatch(listOf(ActionDef("welcomeHome")))
+        assertEquals(1, f.welcome.calls)
+        assertNull(f.welcome.lastCtx)
     }
 }

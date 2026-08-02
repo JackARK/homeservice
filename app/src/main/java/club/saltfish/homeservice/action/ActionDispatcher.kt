@@ -9,21 +9,22 @@ import timber.log.Timber
  * 动作分发器。接收规则引擎输出的动作列表，按 [ActionDef.type] 分发执行。
  *
  * 顺序执行（避免多个 TTS 播放相互抢占）；单个动作失败不影响后续动作。
- * 未来新增动作类型在此 when 分支扩展。
+ * welcomeHome 通过函数注入（[welcomeHome] 回调），便于测试替换、避免对具体编排类的依赖。
  */
 class ActionDispatcher(
     private val bridge: BridgeClient,
-    private val ha: HomeAssistantClient
+    private val ha: HomeAssistantClient,
+    private val welcomeHome: suspend (ActionContext?) -> Result<Unit>
 ) {
 
-    /** 顺序执行动作列表 */
-    suspend fun dispatch(actions: List<ActionDef>) {
+    /** 顺序执行动作列表。[context] 携带触发上下文（开门时间、通知摘要），供 welcomeHome 等使用 */
+    suspend fun dispatch(actions: List<ActionDef>, context: ActionContext? = null) {
         for (action in actions) {
-            executeOne(action)
+            executeOne(action, context)
         }
     }
 
-    private suspend fun executeOne(action: ActionDef) {
+    private suspend fun executeOne(action: ActionDef, context: ActionContext?) {
         val result: Result<Unit> = when (action.type) {
             "bridgePlayText" -> {
                 val text = action.text
@@ -80,6 +81,7 @@ class ActionDispatcher(
                 }
                 ha.callService(domain, service, serviceData)
             }
+            "welcomeHome" -> welcomeHome(context)
             else -> {
                 Timber.w("未知动作类型：${action.type}，跳过")
                 return

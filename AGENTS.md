@@ -141,6 +141,8 @@ homeservice/
 │       │   │   ├── action/                   # 动作执行（发指令、root命令等）
 │       │   │   ├── bridge/                   # open-xiaoai-bridge 通信
 │       │   │   ├── ha/                       # Home Assistant 通信（控制米家设备）
+│       │   │   ├── llm/                      # LLM 客户端（DeepSeek，生成播报文本）
+│       │   │   ├── smart/                    # 智能场景编排（welcomeHome）
 │       │   │   ├── server/                   # 内嵌 HTTP 服务器
 │       │   │   ├── root/                     # Root 操作封装（集中管理）
 │       │   │   ├── keepalive/               # MIUI 保活策略
@@ -175,6 +177,7 @@ homeservice/
 - 已实现动作类型（type 取值）：
   - bridge：`bridgePlayText`（TTS，需 `text`）、`bridgePlayUrl`（音频，需 `url`）、`bridgeWakeup`、`bridgeInterrupt`
   - ha：`haTurnOn`/`haTurnOff`/`haToggle`（需 `entityId`，域从前缀自动提取）、`haCallService`（需 `domain`+`service`，可选 `entityId`、`data`）
+  - smart：`welcomeHome`（智能回家，按室温/日落动态决定开空调与客厅灯，DeepSeek 生成欢迎语播报）
 
 ### 5.4 bridge — open-xiaoai-bridge 通信
 
@@ -245,6 +248,26 @@ curl -H "Authorization: Bearer TOKEN" "http://192.168.5.50:8123/api/services/lig
 - 电池优化白名单（root 自动添加）
 - 自启动权限（root 自动授权）
 - 服务崩溃自动重启（通过 `START_STICKY` + JobScheduler 守护）
+
+### 5.9 llm — LLM 客户端（DeepSeek）
+
+封装 DeepSeek（OpenAI 兼容）文本生成接口，用于生成自然语言播报。端点 `POST {baseUrl}/chat/completions`，鉴权 `Authorization: Bearer {apiKey}`。
+
+- 默认模型 `deepseek-v4-flash`（快速），请求带 `thinking:{type:disabled}` 关闭推理，追求低延迟
+- 不重试（LLM 响应慢），失败由调用方降级
+- apiKey 与 HA token 一样**只存运行时 config.json，不进仓库**
+
+### 5.10 smart — 智能场景编排
+
+`WelcomeHomeOrchestrator` 编排「智能回家」全流程（`welcomeHome` 动作）：
+
+1. **并行查 HA** 环境状态：室内温（`temperatureSensor`）、天色（`sunEntity`）、天气（`weatherEntity`，可选）、空调模式、灯状态
+2. **决策**：室温 ≥ `temperatureThreshold` 且空调未运行 → `climate.set_temperature` 开空调；`sun` 为 `below_horizon` 且灯 off → 开客厅灯
+3. **执行** HA 动作
+4. **组装上下文**（日期/时刻/天色/天气/室温/实际操作结果）调 DeepSeek 生成欢迎语
+5. **bridge.playText** 播报
+
+降级原则：任一状态读不到则跳过该项决策（温度读不到保守不开空调）；LLM 失败用兜底语「欢迎回家」；不阻断整体。entity/阈值/天气源全走 `SmartHomeConfig`（§6.4），配好 HA 天气集成后填 `weatherEntity` 即可纳入天气描述。
 
 ## 6. 硬性要求
 

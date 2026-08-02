@@ -13,6 +13,7 @@ package club.saltfish.homeservice.rule
  * - "haTurnOff"       关闭 HA 实体，需提供 [entityId]
  * - "haToggle"        切换 HA 实体，需提供 [entityId]
  * - "haCallService"   调用 HA 任意服务，需提供 [domain]+[service]，可选 [entityId]、[data]
+ * - "welcomeHome"     智能回家：按室温/日落动态决定开空调与客厅灯，并用 DeepSeek 生成播报
  */
 data class ActionDef(
     val type: String,

@@ -11,10 +11,13 @@ import club.saltfish.homeservice.config.ConfigManager
 import club.saltfish.homeservice.ha.HomeAssistantClient
 import club.saltfish.homeservice.ha.OkHttpHomeAssistantClient
 import club.saltfish.homeservice.keepalive.KeepAliveService
+import club.saltfish.homeservice.llm.DeepSeekClient
+import club.saltfish.homeservice.llm.LlmClient
 import club.saltfish.homeservice.notification.NotificationListener
 import club.saltfish.homeservice.root.RootShell
 import club.saltfish.homeservice.rule.RuleEngine
 import club.saltfish.homeservice.server.HttpServer
+import club.saltfish.homeservice.smart.WelcomeHomeOrchestrator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -22,7 +25,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 
 /**
- * 应用入口。初始化全链路依赖：配置 → bridge/HA → 动作分发 → 规则引擎，
+ * 应用入口。初始化全链路依赖：配置 → bridge/HA/LLM → 智能编排 → 动作分发 → 规则引擎，
  * 启动保活前台服务与内嵌 HTTP 服务器，并尝试 root 自动授权。
  */
 class App : Application() {
@@ -35,6 +38,10 @@ class App : Application() {
     lateinit var bridgeClient: BridgeClient
         private set
     lateinit var haClient: HomeAssistantClient
+        private set
+    lateinit var llmClient: LlmClient
+        private set
+    lateinit var welcomeHomeOrchestrator: WelcomeHomeOrchestrator
         private set
     lateinit var actionDispatcher: ActionDispatcher
         private set
@@ -49,7 +56,9 @@ class App : Application() {
         config = ConfigManager.load(this)
         bridgeClient = OkHttpBridgeClient(config.bridge)
         haClient = OkHttpHomeAssistantClient(config.ha)
-        actionDispatcher = ActionDispatcher(bridgeClient, haClient)
+        llmClient = DeepSeekClient(config.llm)
+        welcomeHomeOrchestrator = WelcomeHomeOrchestrator(haClient, bridgeClient, llmClient, config.smartHome)
+        actionDispatcher = ActionDispatcher(bridgeClient, haClient, welcomeHomeOrchestrator::welcomeHome)
         ruleEngine.resetDedup()
         Timber.i("配置已重新加载，规则数=${config.rules.size}")
     }
@@ -62,7 +71,9 @@ class App : Application() {
         config = ConfigManager.load(this)
         bridgeClient = OkHttpBridgeClient(config.bridge)
         haClient = OkHttpHomeAssistantClient(config.ha)
-        actionDispatcher = ActionDispatcher(bridgeClient, haClient)
+        llmClient = DeepSeekClient(config.llm)
+        welcomeHomeOrchestrator = WelcomeHomeOrchestrator(haClient, bridgeClient, llmClient, config.smartHome)
+        actionDispatcher = ActionDispatcher(bridgeClient, haClient, welcomeHomeOrchestrator::welcomeHome)
         Timber.i("homeService 应用启动，规则数=${config.rules.size}")
 
         // 启动保活前台服务

@@ -16,6 +16,23 @@
     "timeoutMs": 10000,
     "retry": 3
   },
+  "llm": {
+    "baseUrl": "https://api.deepseek.com",
+    "apiKey": "",
+    "model": "deepseek-v4-flash",
+    "timeoutMs": 15000,
+    "maxTokens": 100
+  },
+  "smartHome": {
+    "temperatureSensor": "sensor.xiaomi_cn_2112890261_w2_temperature_p_2_7",
+    "sunEntity": "sun.sun",
+    "acEntityId": "climate.04c9de47c85e_climate",
+    "lightEntityId": "switch.xiaomi_cn_2112890261_w2_on_p_3_1",
+    "temperatureThreshold": 26.0,
+    "acTargetTemp": 26.0,
+    "acHvacMode": "cool",
+    "weatherEntity": null
+  },
   "rules": [
     {
       "id": "sample-doorbell",
