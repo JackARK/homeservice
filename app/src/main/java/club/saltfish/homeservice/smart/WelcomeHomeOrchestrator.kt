@@ -61,14 +61,16 @@ class WelcomeHomeOrchestrator(
         )
 
         if (turnOnAc) {
+            // set_temperature 带 hvac_mode 对米家空调无法从 off 开机，
+            // 需先 set_hvac_mode（开机+设模式），再 set_temperature（设目标温度）
+            ha.callService(
+                "climate", "set_hvac_mode",
+                mapOf("entity_id" to config.acEntityId, "hvac_mode" to config.acHvacMode)
+            ).onFailure { Timber.w(it, "welcomeHome set_hvac_mode 失败") }
             ha.callService(
                 "climate", "set_temperature",
-                mapOf(
-                    "entity_id" to config.acEntityId,
-                    "hvac_mode" to config.acHvacMode,
-                    "temperature" to config.acTargetTemp
-                )
-            ).onFailure { Timber.w(it, "welcomeHome 开空调失败") }
+                mapOf("entity_id" to config.acEntityId, "temperature" to config.acTargetTemp)
+            ).onFailure { Timber.w(it, "welcomeHome set_temperature 失败") }
         }
         if (turnOnLight) {
             ha.turnOn(config.lightEntityId).onFailure { Timber.w(it, "welcomeHome 开灯失败") }

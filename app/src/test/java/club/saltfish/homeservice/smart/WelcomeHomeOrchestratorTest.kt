@@ -72,13 +72,15 @@ class WelcomeHomeOrchestratorTest {
         val ha = haWith("28", "below_horizon", "off", "off")
         val bridge = FakeBridge(); val llm = FakeLlm()
         newOrchestrator(ha, bridge, llm).welcomeHome(null)
-        // 开空调：climate.set_temperature
-        assertEquals(1, ha.called.size)
-        val (domain, service, data) = ha.called.first()
-        assertEquals("climate", domain)
-        assertEquals("set_temperature", service)
-        assertEquals("cool", data["hvac_mode"])
-        assertEquals(26.0, data["temperature"])
+        // 开空调：set_hvac_mode（开机+模式）+ set_temperature（温度），共 2 个调用
+        assertEquals(2, ha.called.size)
+        val hvacCall = ha.called[0]
+        assertEquals("climate", hvacCall.first)
+        assertEquals("set_hvac_mode", hvacCall.second)
+        assertEquals("cool", hvacCall.third["hvac_mode"])
+        val tempCall = ha.called[1]
+        assertEquals("set_temperature", tempCall.second)
+        assertEquals(26.0, tempCall.third["temperature"])
         // 开灯
         assertEquals(listOf("switch.xiaomi_cn_2112890261_w2_on_p_3_1"), ha.turnedOn)
         // LLM 被调用，播报其回复
@@ -101,7 +103,7 @@ class WelcomeHomeOrchestratorTest {
         val ha = haWith("28", "above_horizon", "off", "off")
         val bridge = FakeBridge(); val llm = FakeLlm()
         newOrchestrator(ha, bridge, llm).welcomeHome(null)
-        assertEquals(1, ha.called.size)
+        assertEquals(2, ha.called.size) // 开空调：set_hvac_mode + set_temperature
         assertTrue("白天不应开灯", ha.turnedOn.isEmpty())
     }
 
