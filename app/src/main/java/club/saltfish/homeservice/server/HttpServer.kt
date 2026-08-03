@@ -41,13 +41,13 @@ import java.io.IOException
  * - POST /action      手动触发动作（body: 动作 JSON 数组）
  *
  * 鉴权：除 /api/health 外的所有 API 都要求 token（query 参数 `token` 或
- * `Authorization: Bearer`）；token 由 [App] 保证非空（为空时自动生成）。
+ * `Authorization: Bearer`）。token 在每次请求时动态读取 [App.serverToken]——
+ * 配置热更新 token 后**即时生效，无需重启服务器**（端口变更由 [App] 负责换实例）。
  * 同一 IP 连续鉴权失败会被 [AuthRateLimiter] 临时锁定（内网穿透后防爆破）。
  */
 class HttpServer(
     private val app: App,
     port: Int,
-    private val token: String,
     private val logBuffer: RingLogBuffer,
     private val rateLimiter: AuthRateLimiter = AuthRateLimiter()
 ) : NanoHTTPD(port) {
@@ -109,9 +109,11 @@ class HttpServer(
             val status = Response.Status.lookup(429) ?: Response.Status.FORBIDDEN
             return json(status, mapOf("error" to "too many failures, locked"))
         }
+        // token 动态读取：配置热更新后下一个请求即用新 token，无需重启服务器
+        val expected = app.serverToken.orEmpty()
         val param = session.parameters["token"]?.firstOrNull()
         val header = session.headers["authorization"]
-        val ok = param == token || header == "Bearer $token"
+        val ok = expected.isNotBlank() && (param == expected || header == "Bearer $expected")
         if (ok) {
             rateLimiter.onSuccess(ip)
             return null
@@ -224,7 +226,7 @@ class HttpServer(
         val merged = Redaction.mergeSecrets(ConfigManager.parse(readBody(session)), app.config)
         ConfigManager.save(app, merged)
         app.reloadConfig()
-        // 注意：server.token / server.port 的修改需重启 APP 才生效（服务器实例启动时定型）
+        // server.port / server.token 变更由 reloadConfig 检测并自动重启内嵌服务器（延迟约 0.5s）
         return json(Response.Status.OK, mapOf("status" to "updated"))
     }
 

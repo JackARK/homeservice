@@ -6,7 +6,8 @@
             <n-button size="small" :loading="loading" @click="load">重新加载</n-button>
         </n-space>
         <n-alert type="warning" style="margin-bottom: 12px">
-            server.port / server.token 修改后需重启 App 才能生效。敏感字段显示为掩码，不修改请保持原样。
+            server.port 修改后服务器自动零停机切换（约 0.5s），当前页面可能短暂失联；
+            server.token 修改即时生效，需用新 token 重新登录。敏感字段显示为掩码，不修改请保持原样。
         </n-alert>
 
         <n-spin :show="loading">

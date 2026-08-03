@@ -262,6 +262,7 @@ curl -H "Authorization: Bearer TOKEN" "http://192.168.5.50:8123/api/services/lig
 - token 强制鉴权（query `token` 或 `Authorization: Bearer`）；配置为空时**首启自动生成 48 位随机 token 并持久化**，永不裸奔。
 - `AuthRateLimiter`：同一 IP 连续鉴权失败 10 次锁定 5 分钟。
 - 脱敏逻辑在 `config/Redaction.kt`（纯函数，有单测）。
+- 配置全量热生效：`server.token` 变更即时生效（HttpServer 每次请求动态读取，无需重启）；`server.port` 变更走「先起新实例、后停旧实例」零停机切换，无需重启 APP。
 - HTTPS 由穿透层（Cloudflare Tunnel / frp）终结，APP 侧不管证书。
 
 **APP 页面**：`MainActivity` 为 WebView 容器，加载 `http://127.0.0.1:<port>/?token=<token>` 免密进入同一套 SPA；服务器未启动时降级为原生状态页。
