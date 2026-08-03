@@ -2,6 +2,7 @@ package club.saltfish.homeservice.bridge
 
 import club.saltfish.homeservice.config.BridgeConfig
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -33,7 +34,13 @@ class OkHttpBridgeClient(private val config: BridgeConfig) : BridgeClient {
     private val gson = Gson()
 
     override suspend fun playText(text: String): Result<Unit> =
-        post("/api/play/text", gson.toJson(mapOf("text" to text)))
+        if (config.ttsSpeaker.isNotBlank()) {
+            // 配置了音色 → 走豆包 TTS，指定 speaker_id
+            post("/api/tts/doubao", gson.toJson(mapOf("text" to text, "speaker_id" to config.ttsSpeaker)))
+        } else {
+            // 未配置音色 → 回退小爱原生 TTS
+            post("/api/play/text", gson.toJson(mapOf("text" to text)))
+        }
 
     override suspend fun playUrl(url: String): Result<Unit> =
         post("/api/play/url", gson.toJson(mapOf("url" to url)))
@@ -50,6 +57,50 @@ class OkHttpBridgeClient(private val config: BridgeConfig) : BridgeClient {
             Timber.w(e, "bridge health 检查失败: $url")
             false
         }
+    }
+
+    override suspend fun listVoices(): Result<Map<String, String>> = withContext(Dispatchers.IO) {
+        val body = get("/api/tts/doubao_voices")
+            ?: return@withContext Result.failure(IOException("bridge 音色列表请求失败"))
+        try {
+            // 响应结构: {"success":true,"data":{"versions":{"1.0":{"voices":{id:name,...}},"2.0":{...}}}}
+            val versions = gson.fromJson(body, JsonObject::class.java)
+                .getAsJsonObject("data")?.getAsJsonObject("versions")
+            val voices = mutableMapOf<String, String>()
+            versions?.entrySet()?.forEach { (_, versionEl) ->
+                versionEl.asJsonObject.getAsJsonObject("voices")?.entrySet()
+                    ?.forEach { (id, name) -> voices[id] = name.asString }
+            }
+            Result.success(voices)
+        } catch (e: Exception) {
+            Timber.w(e, "解析音色列表失败")
+            Result.failure(e)
+        }
+    }
+
+    /** 发送 GET 请求，成功返回响应体，失败按重试策略重试后返回 null */
+    private suspend fun get(path: String): String? = withContext(Dispatchers.IO) {
+        val url = config.baseUrl.trimEnd('/') + path
+        for (attempt in 1..config.retry) {
+            val builder = Request.Builder().url(url).get()
+            if (config.token.isNotBlank()) {
+                builder.addHeader("Authorization", "Bearer ${config.token}")
+            }
+            try {
+                client.newCall(builder.build()).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        return@withContext resp.body?.string()
+                    }
+                    Timber.w("bridge $url HTTP ${resp.code}（第 $attempt/${config.retry} 次）")
+                }
+            } catch (e: IOException) {
+                Timber.w(e, "bridge $url 请求异常（第 $attempt/${config.retry} 次）")
+            }
+            if (attempt < config.retry) {
+                delay(min(1000L shl (attempt - 1), 8000L))
+            }
+        }
+        null
     }
 
     /** 发送 POST 请求，失败按重试策略重试（指数退避） */

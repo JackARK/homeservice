@@ -206,6 +206,8 @@ curl -X POST http://192.168.5.50:9092/api/play/text \
 
 模块要求：含重试与超时机制；地址（`http://192.168.5.50:9092`）与 token 走配置文件（§6.4），**不硬编码**。
 
+**音色可配置（已实现）**：`BridgeConfig.ttsSpeaker` 持有豆包音色 ID（默认 `zh_female_vv_uranus_bigtts`）。`playText` 在 `ttsSpeaker` 非空时走 `/api/tts/doubao`（带 `speaker_id`），留空回退 `/api/play/text`（小爱原生）。`listVoices()` 封装 `/api/tts/doubao_voices` 拉取火山音色库。盒子侧 `config.py` 的 `tts.doubao.app_id`/`access_key` 对应火山控制台的 **APP ID / Access Token**（注意：是 Access Token，不是 Secret Key；`access_key` 填错会报 `45000010 load grant not found`）。
+
 **部署侧关键约束**：bridge 默认 `API_SERVER_HOST=127.0.0.1`（仅本机），部署到盒子后**必须设 `API_SERVER_HOST=0.0.0.0`**，否则手机/局域网无法访问 9092。
 
 ### 5.5 ha — Home Assistant 通信（控制米家设备）
@@ -234,7 +236,7 @@ curl -H "Authorization: Bearer TOKEN" "http://192.168.5.50:8123/api/services/lig
 模块要求：含重试与超时机制（与 bridge 一致，默认 10s/3 次指数退避）；地址与 token 走配置（§6.4）。
 
 ### 5.6 server — 内嵌 HTTP 服务器
-- 暴露 REST API：触发动作、查询通知历史、管理规则、健康检查
+- 暴露 REST API：`GET/POST /rules`（规则）、`GET/POST /config`（整包配置）、`GET/POST /tts`（音色：GET 返回当前音色+可用音色列表，POST 单独改音色 `{"speaker":"<音色ID>"}`）、`POST /action`（触发动作）、`GET /health`
 - **绑定局域网 IP，不暴露公网**
 - 需要简单鉴权（Token 或局域网 IP 白名单）
 

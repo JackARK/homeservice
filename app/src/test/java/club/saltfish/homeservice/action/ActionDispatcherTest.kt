@@ -43,6 +43,8 @@ private class FakeBridgeClient : BridgeClient {
     }
 
     override suspend fun health(): Boolean = true
+
+    override suspend fun listVoices(): Result<Map<String, String>> = Result.success(emptyMap())
 }
 
 private data class CallServiceRecord(

@@ -7,7 +7,9 @@ data class BridgeConfig(
     val baseUrl: String = "http://192.168.5.50:9092",
     val token: String = "",
     val timeoutMs: Int = 10_000,
-    val retry: Int = 3
+    val retry: Int = 3,
+    /** 豆包 TTS 音色 ID（如 zh_female_vv_uranus_bigtts）。留空则回退到 /api/play/text（小爱原生 TTS） */
+    val ttsSpeaker: String = "zh_female_vv_uranus_bigtts"
 )
 
 /** 内嵌 HTTP 服务器配置 */

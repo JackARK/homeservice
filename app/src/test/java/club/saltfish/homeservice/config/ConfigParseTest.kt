@@ -76,4 +76,24 @@ class ConfigParseTest {
         assertEquals(10_000, config.ha.timeoutMs)
         assertTrue(config.rules.isEmpty())
     }
+
+    @Test
+    fun parsesTtsSpeaker() {
+        val json = """{ "bridge": { "ttsSpeaker": "zh_female_shuangkuaisisi_moon_bigtts" } }"""
+        val config = ConfigManager.parse(json)
+        assertEquals("zh_female_shuangkuaisisi_moon_bigtts", config.bridge.ttsSpeaker)
+    }
+
+    @Test
+    fun ttsSpeakerDefaultsWhenMissing() {
+        val config = ConfigManager.parse("{}")
+        assertEquals("zh_female_vv_uranus_bigtts", config.bridge.ttsSpeaker)
+    }
+
+    @Test
+    fun roundTripPreservesTtsSpeaker() {
+        val original = AppConfig(bridge = BridgeConfig(ttsSpeaker = "zh_male_raphael_bigtts"))
+        val parsed = ConfigManager.parse(ConfigManager.toJson(original))
+        assertEquals("zh_male_raphael_bigtts", parsed.bridge.ttsSpeaker)
+    }
 }

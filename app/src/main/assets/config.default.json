@@ -3,7 +3,8 @@
     "baseUrl": "http://192.168.5.50:9092",
     "token": "",
     "timeoutMs": 10000,
-    "retry": 3
+    "retry": 3,
+    "ttsSpeaker": "zh_female_vv_uranus_bigtts"
   },
   "server": {
     "port": 8888,

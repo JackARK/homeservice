@@ -38,6 +38,7 @@ private class FakeBridge : BridgeClient {
     override suspend fun wakeup(): Result<Unit> = Result.success(Unit)
     override suspend fun interrupt(): Result<Unit> = Result.success(Unit)
     override suspend fun health(): Boolean = true
+    override suspend fun listVoices(): Result<Map<String, String>> = Result.success(emptyMap())
 }
 
 private class FakeLlm : LlmClient {
