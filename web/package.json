@@ -1,0 +1,21 @@
+{
+  "name": "homeservice-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && node scripts/copy-dist.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "naive-ui": "^2.43.1",
+    "vue": "^3.5.18",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.1",
+    "typescript": "~5.9.2",
+    "vite": "^7.1.2"
+  }
+}
