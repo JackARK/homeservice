@@ -39,7 +39,17 @@ class NotificationListener : NotificationListenerService() {
         Timber.i("收到通知 pkg=${parsed.packageName} title=${parsed.title} text=${parsed.text}")
 
         val app = applicationContext as App
-        val actions = app.ruleEngine.match(parsed, app.config.rules)
+        val matched = app.ruleEngine.matchedRules(parsed, app.config.rules)
+        RecentEvents.add(
+            NotificationEvent(
+                timeMillis = sbn.postTime,
+                packageName = parsed.packageName,
+                title = parsed.title,
+                text = parsed.text,
+                matchedRuleIds = matched.map { it.id }
+            )
+        )
+        val actions = matched.flatMap { it.actions }
         if (actions.isEmpty()) return
 
         Timber.i("规则命中，待执行动作 ${actions.size} 个")

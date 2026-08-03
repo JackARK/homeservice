@@ -2,6 +2,11 @@
 
 > 本文件供 AI 编程助手（Kimi Code 等）阅读。修改本项目代码前请通读本文件。
 
+## 0. 分支约定
+
+- `main`：稳定分支，可部署到真机。
+- `develop`：开发分支（当前进行 WEB 管理页面与 APP 页面的设计开发）。**允许 push 到远程，但不允许部署到设备**——不要在 develop 分支上执行 `installDebug` / `adb install` 等部署操作。
+
 ## 1. 项目概述
 
 在闲置的红米 K40 Gaming（已 root，长期插电）上运行的**服务型 Android 应用**，无人值守长期运行。
@@ -143,14 +148,16 @@ homeservice/
 │       │   │   ├── ha/                       # Home Assistant 通信（控制米家设备）
 │       │   │   ├── llm/                      # LLM 客户端（DeepSeek，生成播报文本）
 │       │   │   ├── smart/                    # 智能场景编排（welcomeHome）
-│       │   │   ├── server/                   # 内嵌 HTTP 服务器
+│       │   │   ├── server/                   # 内嵌 HTTP 服务器（REST + SPA 静态托管）
 │       │   │   ├── root/                     # Root 操作封装（集中管理）
 │       │   │   ├── keepalive/               # MIUI 保活策略
-│       │   │   ├── config/                  # 配置加载与管理
-│       │   │   └── log/                     # 日志配置
+│       │   │   ├── config/                  # 配置加载与管理（含 Redaction 脱敏）
+│       │   │   └── log/                     # 内存环形日志缓冲（Web 日志查看数据源）
 │       │   └── res/
 │       └── test/
 │           └── kotlin/club/saltfish/homeservice/   # 单元测试（至少覆盖 rule/）
+├── web/                        # Web 管理端前端（Vite + Vue 3 + TS + Naive UI）
+│   └── （构建产物拷入 app/src/main/assets/web/ 并提交进仓库）
 ├── build.gradle.kts
 ├── settings.gradle.kts
 └── gradle/
@@ -235,10 +242,29 @@ curl -H "Authorization: Bearer TOKEN" "http://192.168.5.50:8123/api/services/lig
 
 模块要求：含重试与超时机制（与 bridge 一致，默认 10s/3 次指数退避）；地址与 token 走配置（§6.4）。
 
-### 5.6 server — 内嵌 HTTP 服务器
-- 暴露 REST API：`GET/POST /rules`（规则）、`GET/POST /config`（整包配置）、`GET/POST /tts`（音色：GET 返回当前音色+可用音色列表，POST 单独改音色 `{"speaker":"<音色ID>"}`）、`POST /action`（触发动作）、`GET /health`
-- **绑定局域网 IP，不暴露公网**
-- 需要简单鉴权（Token 或局域网 IP 白名单）
+### 5.6 server — 内嵌 HTTP 服务器（已实现 Web 管理端）
+
+承担两个角色：**REST API** 与 **Web 管理端 SPA 静态托管**（`assets/web/`，GET 非 API 路径，免鉴权；`/` → index.html，拒绝 `..` 路径穿越）。
+
+**API 统一 `/api/` 前缀**，旧根路径（/rules、/config、/tts、/action、/health）保留为别名：
+
+| 方法 | 路径 | 说明 | 鉴权 |
+|------|------|------|------|
+| GET | `/api/health` | 健康检查，只返回 `{"status":"ok"}` | 免 |
+| GET | `/api/status` | 状态看板：uptime、版本、root、监听授权、bridge/HA 连通性、最近通知事件 | 需 |
+| GET | `/api/logs` | 日志查询（`level`/`keyword`/`afterId`/`limit`，afterId 增量轮询） | 需 |
+| GET/POST | `/api/rules` | 规则读取 / 全量更新 | 需 |
+| GET/POST | `/api/config` | 配置读取（**敏感字段脱敏为 `********`**）/ 更新（掩码字段保留旧值） | 需 |
+| GET/POST | `/api/tts` | 音色查询 / 单独修改 `{"speaker":"<音色ID>"}` | 需 |
+| POST | `/api/action` | 手动触发动作（ActionDef 数组） | 需 |
+
+**安全约定**（按「经内网穿透面向公网」标准）：
+- token 强制鉴权（query `token` 或 `Authorization: Bearer`）；配置为空时**首启自动生成 48 位随机 token 并持久化**，永不裸奔。
+- `AuthRateLimiter`：同一 IP 连续鉴权失败 10 次锁定 5 分钟。
+- 脱敏逻辑在 `config/Redaction.kt`（纯函数，有单测）。
+- HTTPS 由穿透层（Cloudflare Tunnel / frp）终结，APP 侧不管证书。
+
+**APP 页面**：`MainActivity` 为 WebView 容器，加载 `http://127.0.0.1:<port>/?token=<token>` 免密进入同一套 SPA；服务器未启动时降级为原生状态页。
 
 ### 5.7 root — Root 操作（集中管理）
 - 所有需要 root 权限的操作统一在此模块
@@ -340,7 +366,13 @@ curl -H "Authorization: Bearer TOKEN" "http://192.168.5.50:8123/api/services/lig
 # 运行单元测试
 ./gradlew test
 
-# 安装到设备
+# 构建 Web 管理端前端（产物自动拷入 app/src/main/assets/web/，需提交）
+cd web && npm install && npm run build
+
+# 前端联调（dev server，proxy 指向真机 8888）
+cd web && npm run dev
+
+# 安装到设备（⚠️ 仅 main 分支允许，develop 分支禁止部署）
 ./gradlew installDebug
 # 或 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -374,5 +406,5 @@ curl -H "Authorization: Bearer TOKEN" "http://192.168.5.50:8123/api/services/lig
 | A | HTTP 服务器选型 | **NanoHTTPD** | 轻量、单依赖，内嵌够用；Ktor 引入成本高 |
 | B | JSON 库 | **Gson** | 生态熟，配置热更新够用 |
 | C | Root 执行方式 | **libsu** | 比裸 `Runtime.exec("su")` 稳，能拿 exit code / 输出 |
-| D | Web UI 管理规则 | **先不做**，纯 REST API + 配置文件 | 按需后加 |
+| D | Web UI 管理规则 | **已实施**：内嵌 SPA（web/，Vue 3 + Naive UI）+ APP WebView 页面 | 一次开发两端可用，构建产物提交仓库 |
 | E | 通知去重策略 | **默认 60s 内相同(包名+title+text)去重，可配置** | 避免重复触发，阈值外部化 |

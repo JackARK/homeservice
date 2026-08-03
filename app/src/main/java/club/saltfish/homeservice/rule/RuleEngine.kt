@@ -17,8 +17,12 @@ class RuleEngine(
 ) {
 
     /** 用 [rules] 匹配 [notification]，返回所有命中且未去重的动作。 */
-    fun match(notification: ParsedNotification, rules: List<Rule>): List<ActionDef> {
-        val actions = mutableListOf<ActionDef>()
+    fun match(notification: ParsedNotification, rules: List<Rule>): List<ActionDef> =
+        matchedRules(notification, rules).flatMap { it.actions }
+
+    /** 与 [match] 相同的匹配流程，但返回命中的规则本身（看板展示命中规则 id 用） */
+    fun matchedRules(notification: ParsedNotification, rules: List<Rule>): List<Rule> {
+        val matched = mutableListOf<Rule>()
         for (rule in rules) {
             if (!matchesPackage(rule, notification.packageName)) continue
             if (!matchesRegex(rule.titleRegex, notification.title, rule.id)) continue
@@ -27,9 +31,9 @@ class RuleEngine(
             val key = dedupKey(rule.id, notification)
             if (!dedup.shouldProcess(key, rule.dedupWindowMs)) continue
 
-            actions.addAll(rule.actions)
+            matched.add(rule)
         }
-        return actions
+        return matched
     }
 
     /** 重置去重缓存（如规则热更新后调用） */
